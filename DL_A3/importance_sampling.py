@@ -58,6 +58,11 @@ class VAE(nn.Module):
 		esp = torch.randn(*mu.size())
 		z = mu + std * esp
 		return z
+	def decoder(self, z):
+		z = self.decoder_fc(z)
+		z = z.unsqueeze(2).unsqueeze(3)
+		x_hat = self.decoder_conv(z)
+		return x_hat
 	
 	def forward(self, x):
 		#ipdb.set_trace()
@@ -69,15 +74,6 @@ class VAE(nn.Module):
 		z = self.decoder_fc(z)
 		z = z.unsqueeze(2).unsqueeze(3)
 		return self.decoder_conv(z), mu, logvar
-
-
-def loss_fn(recon_x, x, mu, logvar):
-	recon_x = recon_x.view(recon_x.shape[0], -1)
-	x = x.view(x.shape[0], -1)
-
-	BCE = nn.BCEWithLogitsLoss(reduction='sum')(recon_x.float(), x.float())
-	KLD = -0.5 * torch.sum(1 + logvar - mu**2 -  logvar.exp())
-	return (BCE + KLD)/x.shape[0]
 
 def load_static_mnist(batch_size = 32, test_batch_size=32):
 	input_size = [1, 28, 28]
@@ -106,76 +102,58 @@ def load_static_mnist(batch_size = 32, test_batch_size=32):
 	test_loader = data_utils.DataLoader(test, batch_size=test_batch_size, shuffle=True)
 	return train_loader, val_loader, test_loader
 
-def train(model, epoch, stepTrain, train_loader):
-	model.train()
-	experiment.train()
-	experiment.log_current_epoch(epoch)
-	allEpochTrainingLoss = []
+def compute_prob(model, data_loader, K):
 
-	for batch_idx, (x, _) in enumerate(train_loader):
-		optimizer.zero_grad()
-		x= Variable(x).view(x.shape[0],1,28,28)
-		recon_images, mus, logvars = model(x)
-		loss = loss_fn(recon_images, x, mus, logvars)
-		loss.backward()
-		print(loss.item())
-		optimizer.step()
-		experiment.log_metric("loss", loss.item(), step= stepTrain)
-		allEpochTrainingLoss.append(loss.item())
-		stepTrain += 1
-	return stepTrain, allEpochTrainingLoss
-
-
-def eval(model, epoch, val_loader):
-	model.eval()
-	experiment.validate()
-	experiment.log_current_epoch(epoch)
-	eval_loss = 0
+	
 	batchNo = 0
-	for batch_idx, (x, _) in enumerate(val_loader):
+	final_log = 0.0
+	for batch_idx, (x, _) in enumerate(data_loader):
+		batchNo += 1
 		x = Variable(x).view(x.shape[0],1,28,28)
-		recon_images, mus, logvars = model(x)
-		eval_loss += loss_fn(recon_images, x, mus, logvars).item()
-		batchNo +=1
+		_, mus, logvars = model(x)
+		var = logvars.exp_()
 
-	eval_loss /=  batchNo
-	experiment.log_metric("Evaluationloss", eval_loss, step=epoch)
-
-	return eval_loss
-
-
+		## put for loop for K times
+		
+		probs = torch.zeros(x.shape[0])
+		for k in range(K):
+			z = model.reparameterize(mus, logvars)
 
 
+			for i in range(x.shape[0]):
+				qd = torch.distributions.multivariate_normal.MultivariateNormal(mus[i],var[i].diag())
+				q = qd.log_prob(z[i])
+				pd = torch.distributions.multivariate_normal.MultivariateNormal(torch.zeros(100), torch.eye(100))
+				p = pd.log_prob(z[i])
+				p_x = torch.sigmoid(model.decoder(z[i].unsqueeze(0)).flatten())
+				pd = torch.distributions.bernoulli.Bernoulli(p_x)
+				m = pd.log_prob(x[0].flatten()).sum()
+				
+				log_prob = m + p - q
+				prob = log_prob.exp()
+				probs[i] += prob
+
+		probs = probs/K
+		logprobs = torch.log(probs)
+		final_log += logprobs.sum()
+		print(logprobs.sum())
+	final_log /= batchNo
+	return final_log
 
 
 
 
-bestEpoch = 0
-experiment = Experiment(api_key="V1ZVYej7DxAyiXRVoeAs4JWZb",
-                        project_name="VAE", workspace="amini2nt")
-number_of_epochs = 20
-allEpochsTrainingLoss = []
-allEpochsEvaluationLoss  = []
 train_loader, val_loader, test_loader = load_static_mnist()
 model = VAE()
-optimizer = torch.optim.Adam(model.parameters(), lr=3e-4 , betas= [0.9, 0.999])
-bestLoss = float("inf")
+PATH = "best_model_from_" + str(0) + "_epoch"
+model.load_state_dict(torch.load(PATH))
+model.eval()
 
-stepTrain = 0
-for epoch in range(20):
-	stepTrain, allEpochTrainingLoss = train(model, epoch, stepTrain, train_loader)
-	eval_loss = eval(model, epoch, val_loader)
-	if eval_loss < bestLoss:
-		bestLoss = eval_loss
-		print(bestLoss," is best loss so far which belongs to ", epoch)
-		bestEpoch = epoch
-		directory = "best_model.p"
-		bestModel = model.state_dict()
-		torch.save(bestModel, directory) 
+K = 200
+val_log_likelihood = compute_prob(model, val_loader, K)
 
-	allEpochsTrainingLoss.extend(allEpochTrainingLoss)
-	allEpochsEvaluationLoss.append(eval_loss)
-pickle.dump( allEpochsEvaluationLoss, open( "allEpochsEvaluationLoss.p", "wb" ) )
-pickle.dump( allEpochsTrainingLoss, open( "allEpochTrainingLoss.p", "wb" ) )
+test_log_likelihood = compute_prob(model, test_loader, K)
 
+print(val_log_likelihood)
+print(test_log_likelihood)
 
