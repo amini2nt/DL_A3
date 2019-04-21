@@ -162,14 +162,14 @@ optimizer = torch.optim.Adam(model.parameters(), lr=3e-4 , betas= [0.9, 0.999])
 bestLoss = float("inf")
 
 stepTrain = 0
-for epoch in range(20):
+for epoch in range(50):
 	stepTrain, allEpochTrainingLoss = train(model, epoch, stepTrain, train_loader)
 	eval_loss = eval(model, epoch, val_loader)
 	if eval_loss < bestLoss:
 		bestLoss = eval_loss
 		print(bestLoss," is best loss so far which belongs to ", epoch)
 		bestEpoch = epoch
-		directory = "best_model.p"
+		directory = "best_model_50.p"
 		bestModel = model.state_dict()
 		torch.save(bestModel, directory) 
 

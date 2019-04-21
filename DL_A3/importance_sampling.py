@@ -1,4 +1,3 @@
-from comet_ml import Experiment
 
 import numpy as np
 import ipdb
@@ -107,6 +106,8 @@ def compute_prob(model, data_loader, K):
 	
 	batchNo = 0
 	final_log = 0.0
+	logprobs = []
+	pd = torch.distributions.multivariate_normal.MultivariateNormal(torch.zeros(100), torch.eye(100))
 	for batch_idx, (x, _) in enumerate(data_loader):
 		batchNo += 1
 		x = Variable(x).view(x.shape[0],1,28,28)
@@ -114,30 +115,37 @@ def compute_prob(model, data_loader, K):
 		var = logvars.exp_()
 
 		## put for loop for K times
-		
-		probs = torch.zeros(x.shape[0])
-		for k in range(K):
-			z = model.reparameterize(mus, logvars)
 
 
-			for i in range(x.shape[0]):
-				qd = torch.distributions.multivariate_normal.MultivariateNormal(mus[i],var[i].diag())
-				q = qd.log_prob(z[i])
-				pd = torch.distributions.multivariate_normal.MultivariateNormal(torch.zeros(100), torch.eye(100))
-				p = pd.log_prob(z[i])
-				p_x = torch.sigmoid(model.decoder(z[i].unsqueeze(0)).flatten())
-				pd = torch.distributions.bernoulli.Bernoulli(p_x)
-				m = pd.log_prob(x[0].flatten()).sum()
-				
-				log_prob = m + p - q
-				prob = log_prob.exp()
-				probs[i] += prob
+		for i in range(x.shape[0]):
+			qd = torch.distributions.multivariate_normal.MultivariateNormal(mus[i],var[i].diag())
+			z = qd.sample(sample_shape=torch.Size([K]))
+			q = [ qd.log_prob(z[l]) for l in range(K) ]
+			p = [ pd.log_prob(z[j]) for j in range(K) ]
+			p_x = torch.sigmoid(model.decoder(z))
+			p_x = [p_x[j].flatten() for j in range(K)]
+			#p_x = [torch.sigmoid(model.decoder(z[j].unsqueeze(0)).flatten()) for j in range(K)]
+			#m = []
 
-		probs = probs/K
-		logprobs = torch.log(probs)
-		final_log += logprobs.sum()
-		print(logprobs.sum())
-	final_log /= batchNo
+			m = [(x[i].flatten()*torch.log(p_x[k]) + (1-x[i].flatten())*torch.log(1.0-p_x[k])).sum() for k in range(K)]
+			#for k in range(K):
+			
+			#	xd = torch.distributions.bernoulli.Bernoulli(p_x[k])
+			#	m.append(xd.log_prob(x[i].flatten()).sum())
+
+			argsum = [m[j]+p[j]-q[j] for j in range(K)]
+
+			logpx  = -torch.log(torch.tensor(float(K))) + torch.logsumexp(torch.stack(argsum), dim=0)
+			logprobs.append(logpx)
+		print(batchNo)
+		print(sum(logprobs)/len(logprobs))	
+
+
+	final_log = sum(logprobs)/ len(logprobs)
+	print(final_log)
+
+
+
 	return final_log
 
 
@@ -145,7 +153,7 @@ def compute_prob(model, data_loader, K):
 
 train_loader, val_loader, test_loader = load_static_mnist()
 model = VAE()
-PATH = "best_model_from_" + str(0) + "_epoch"
+PATH = "best_model.p"
 model.load_state_dict(torch.load(PATH))
 model.eval()
 
@@ -154,6 +162,6 @@ val_log_likelihood = compute_prob(model, val_loader, K)
 
 test_log_likelihood = compute_prob(model, test_loader, K)
 
-print(val_log_likelihood)
-print(test_log_likelihood)
+print("val: ",val_log_likelihood)
+print("test: ",test_log_likelihood)
 
