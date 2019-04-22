@@ -34,9 +34,21 @@ def distribution1(x, batch_size=1):
         a = np.array([(x, random.uniform(0, 1)) for _ in range(batch_size)] , dtype=np.double)
         yield(torch.from_numpy(a))
 
+def distribution3(batch_size=1):
+    # High dimension gaussian distribution
+    while True:
+        yield(np.random.normal(0, 1, (batch_size, 1))) # Can be used in 1.4
+
+e = lambda x: np.exp(x)
+tanh = lambda x: (e(x) - e(-x)) / (e(x)+e(-x))
+def distribution4(batch_size=1):
+    # arbitrary sampler
+    f = lambda x: tanh(x*2+1) + x*0.75
+    while True:
+        yield(f(np.random.normal(0, 1, (batch_size, 1))))
 
 
-############## QUESTIONS 1-4 ###############
+############## QUESTION 1 ###############
 def q1(data):
     assert (data[0][0].size()[1] == data[0][1].size()[1])
     input_size = data[0][0].size()[1]
@@ -49,7 +61,7 @@ def q1(data):
         torch.nn.Sigmoid()
     )
     discriminator.double()
-    optimizer = optim.SGD(discriminator.parameters(), lr=0.01) #, momentum=0.2)
+    optimizer = optim.SGD(discriminator.parameters(), lr=0.01)
     for epoch in range(10):
         #print("JS Epoch #%s" % (epoch+1))
         for (p, q) in data:
@@ -62,6 +74,9 @@ def q1(data):
         return (math.log(2) + torch.mean(torch.log(discriminator(p))) / 2 + torch.mean(torch.log(1 - discriminator(q))) / 2).item()
     return js_distance
 
+
+
+############## QUESTION 2 ###############
 def q2(data):
     assert (data[0][0].size()[1] == data[0][1].size()[1])
     batch_size = data[0][0].size()[0]
@@ -75,7 +90,7 @@ def q2(data):
         torch.nn.Linear(32, 1),
     )
     critic.double()
-    optimizer = optim.SGD(critic.parameters(), lr=0.001, momentum=0.9)
+    optimizer = optim.SGD(critic.parameters(), lr=0.001)
     for epoch in range(10):
         #print("WS Epoch #%s" % (epoch+1))
         for (p, q) in data:
@@ -92,23 +107,16 @@ def q2(data):
             gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
             # Compute the loss and optimize
             loss = -(torch.mean(critic(p)) - torch.mean(critic(q)) - lambda_ * gradient_penalty)
-            #print("Loss :%s" % loss.data.item())
             loss.backward()
             optimizer.step()
+        print("WS Loss :%s" % loss.data.item())
     def w_distance(p,q):
         return (torch.mean(critic(p)) - torch.mean(critic(q))).item()
     return w_distance
 
-# For 1.3, the discriminator and the critic are trained on uniform distributions — and tested on uniform distributions.
-#   You train on the same uniform that you test. You train 21 models, separately
-#   p is always (0,Z) and q is (theta, Z)
-#   Distributions in R2
-#   Yep. When theta is 0 we get 0 and when theta is not 0 we get log 2
-#   JSD and WD are metrics (distances) between 2 distributions. In Q1.3, you are computing the distances between distributions P(Z) and Q(Z, \phi) where Z and \phi parameterize P and Q. Since an optimal discriminator estimates the JSD or WD (depending on the loss), you train a discriminator to convergence (i.e try to make it optimal) and use it compute JSD or WD
 
 
-
-
+############## QUESTION 3 ###############
 def q3():
     random.seed(0)
     trandom.manual_seed(0)
@@ -119,16 +127,14 @@ def q3():
 
     for phi in [x/10. for x in range(-10,11)]:
         d_q = distribution1(phi, 512)
-        train = [(next(d_p), next(d_q)) for i in range(100)]
+        train = [(next(d_p), next(d_q)) for i in range(500)]
         critic = q2(train)
-        p = next(d_p)
-        q = next(d_q)
-        ws_distances.append((phi, critic(p,q)))
+        ws_distances.append((phi, critic(next(d_p),next(d_q))))
         print("Phi %.3f, WS %.3f" % (ws_distances[-1][0], ws_distances[-1][1]))
     
     for phi in [x/10. for x in range(-10,11)]:
         d_q = distribution1(phi, 512)
-        train = [(next(d_p), next(d_q)) for i in range(200)]
+        train = [(next(d_p), next(d_q)) for i in range(300)]
         discriminator = q1(train)
         js_divergences.append((phi, discriminator(next(d_p), next(d_q))))
         print("Phi %.3f, JS %.3f" % (js_divergences[-1][0], js_divergences[-1][1]))
@@ -143,31 +149,53 @@ def q3():
     f.close()
 
 
+
+############## QUESTION 4 ###############
 def q4(data):
-    assert (data[0][0].size()[1] == data[0][1].size()[1])
-    input_size = data[0][0].size()[1]
-    discriminator = torch.nn.Sequential(
-        torch.nn.Linear(input_size, 32),
-        torch.nn.ReLU(),
-        torch.nn.Linear(32, 32),
-        torch.nn.ReLU(),
-        torch.nn.Linear(32, 1),
-        torch.nn.Sigmoid()
-    )
-    discriminator.double()
-    optimizer = optim.SGD(discriminator.parameters(), lr=0.001, momentum=0.2)
-    for epoch in range(10):
-        #print("Q4 Epoch #%s" % (epoch+1))
-        for (p, q) in data:
-            discriminator.zero_grad()
-            loss = -(torch.mean(torch.log(discriminator(p)))+ torch.mean(torch.log(1 - discriminator(q))))
-            loss.backward()
-            optimizer.step()
+    def create_discriminator(data):
+        assert (data[0][0].size()[1] == data[0][1].size()[1])
+        input_size = data[0][0].size()[1]
+        discriminator = torch.nn.Sequential(
+            torch.nn.Linear(input_size, 32),
+            torch.nn.ReLU(),
+            torch.nn.Linear(32, 32),
+            torch.nn.ReLU(),
+            torch.nn.Linear(32, 1),
+            torch.nn.Sigmoid()
+        )
+        discriminator.double()
+        optimizer = optim.SGD(discriminator.parameters(), lr=0.001)
+        for epoch in range(10):
+            #print("Q4 Epoch #%s" % (epoch+1))
+            for (p, q) in data:
+                discriminator.zero_grad()
+                loss = -(torch.mean(torch.log(discriminator(p))) + torch.mean(torch.log(1 - discriminator(q))))
+                loss.backward()
+                optimizer.step()
         #print("Q4 Loss :%s" % loss.data.item())
-    def js_distance(p,q):
-        return (math.log(2) + torch.mean(torch.log(discriminator(p))) / 2 + torch.mean(torch.log(1 - discriminator(q))) / 2).item()
-    return js_distance
+        return discriminator
+
+    def train_discriminator():
+        d_p = distribution4(512) # p : f1
+        d_q = distribution3(512) # q : f0
+        train = [(next(d_p), next(d_q)) for i in range(500)]
+        return create_discriminator(train)
+
+
+    return f1
+
+    discriminator = train_discriminator()
+    f0 = next(distribution3(512))
+    def estimated_f1(x):
+        return (f0 * discriminator(x))/(1 - discriminator(x))
+
+    plot discriminator
+    plit estimated_f1
+
+    #p : f1 : distribution4
+    #q : f0 : gaussian
+    #f1(x) = (f0(x) * d(x))/(1 - d(x))
 
 
 if __name__ == "__main__":
-    q3()
+    pass #q3()
