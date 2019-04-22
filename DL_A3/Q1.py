@@ -12,6 +12,8 @@ import math
 import random
 import matplotlib.pyplot as plt
 
+
+############### HELPERS ##############
 def show_ws():
     pairs = [(l.split("\t")[0], l.split("\t")[1]) for l in open("ws.tab").read().split("\n") if l]
     x = [float(k[0]) for k in pairs]
@@ -33,6 +35,8 @@ def distribution1(x, batch_size=1):
         yield(torch.from_numpy(a))
 
 
+
+############## QUESTIONS 1-4 ###############
 def q1(data):
     assert (data[0][0].size()[1] == data[0][1].size()[1])
     input_size = data[0][0].size()[1]
@@ -45,12 +49,12 @@ def q1(data):
         torch.nn.Sigmoid()
     )
     discriminator.double()
-    optimizer = optim.SGD(discriminator.parameters(), lr=0.001, momentum=0.2)
+    optimizer = optim.SGD(discriminator.parameters(), lr=0.01) #, momentum=0.2)
     for epoch in range(10):
         #print("JS Epoch #%s" % (epoch+1))
         for (p, q) in data:
             discriminator.zero_grad()
-            loss = -(math.log(2) + torch.mean(torch.log(discriminator(p))) / 2 + torch.mean(torch.log(1 - discriminator(q))) / 2)
+            loss = -(torch.mean(torch.log(discriminator(p))) / 2 + torch.mean(torch.log(1 - discriminator(q))) / 2)
             loss.backward()
             optimizer.step()
         #print("JS Loss :%s" % loss.data.item())
@@ -122,24 +126,47 @@ def q3():
         ws_distances.append((phi, critic(p,q)))
         print("Phi %.3f, WS %.3f" % (ws_distances[-1][0], ws_distances[-1][1]))
     
-    for phi in [-1,0,1]: # [x/10. for x in range(-10,11)]:
+    for phi in [x/10. for x in range(-10,11)]:
         d_q = distribution1(phi, 512)
-        train = [(next(d_p), next(d_q)) for i in range(100)]
+        train = [(next(d_p), next(d_q)) for i in range(200)]
         discriminator = q1(train)
-        p = next(d_p)
-        q = next(d_q)
-        js_divergences.append((phi, discriminator(p,q)))
+        js_divergences.append((phi, discriminator(next(d_p), next(d_q))))
         print("Phi %.3f, JS %.3f" % (js_divergences[-1][0], js_divergences[-1][1]))
     
     print(ws_distances)
     f = open("ws.tab", "w")
     f.write("\n".join(["%.3f\t%.3f" % (x,y) for (x,y) in ws_distances]))
     f.close()
-    #print(js_divergences)
+    print(js_divergences)
     f = open("js.tab", "w")
     f.write("\n".join(["%.3f\t%.3f" % (x,y) for (x,y) in js_divergences]))
     f.close()
 
+
+def q4(data):
+    assert (data[0][0].size()[1] == data[0][1].size()[1])
+    input_size = data[0][0].size()[1]
+    discriminator = torch.nn.Sequential(
+        torch.nn.Linear(input_size, 32),
+        torch.nn.ReLU(),
+        torch.nn.Linear(32, 32),
+        torch.nn.ReLU(),
+        torch.nn.Linear(32, 1),
+        torch.nn.Sigmoid()
+    )
+    discriminator.double()
+    optimizer = optim.SGD(discriminator.parameters(), lr=0.001, momentum=0.2)
+    for epoch in range(10):
+        #print("Q4 Epoch #%s" % (epoch+1))
+        for (p, q) in data:
+            discriminator.zero_grad()
+            loss = -(torch.mean(torch.log(discriminator(p)))+ torch.mean(torch.log(1 - discriminator(q))))
+            loss.backward()
+            optimizer.step()
+        #print("Q4 Loss :%s" % loss.data.item())
+    def js_distance(p,q):
+        return (math.log(2) + torch.mean(torch.log(discriminator(p))) / 2 + torch.mean(torch.log(1 - discriminator(q))) / 2).item()
+    return js_distance
 
 
 if __name__ == "__main__":
