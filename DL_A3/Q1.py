@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import torch
 import torch.nn as nn
 import torch.autograd as autograd
@@ -7,6 +10,28 @@ import torch.random as trandom
 import numpy as np
 import math
 import random
+import matplotlib.pyplot as plt
+
+def show_ws():
+    pairs = [(l.split("\t")[0], l.split("\t")[1]) for l in open("ws.tab").read().split("\n") if l]
+    x = [float(k[0]) for k in pairs]
+    y = [float(k[1]) for k in pairs]
+    plt.scatter(x, y)
+    plt.show()
+
+def show_js():
+    pairs = [(l.split("\t")[0], l.split("\t")[1]) for l in open("js.tab").read().split("\n") if l]
+    x = [float(k[0]) for k in pairs]
+    y = [float(k[1]) for k in pairs]
+    plt.scatter(x, y)
+    plt.show()
+
+def distribution1(x, batch_size=1):
+    # Distribution defined as (x, U(0,1)). Can be used for question 3
+    while True:
+        a = np.array([(x, random.uniform(0, 1)) for _ in range(batch_size)] , dtype=np.double)
+        yield(torch.from_numpy(a))
+
 
 def q1(data):
     assert (data[0][0].size()[1] == data[0][1].size()[1])
@@ -78,11 +103,7 @@ def q2(data):
 #   JSD and WD are metrics (distances) between 2 distributions. In Q1.3, you are computing the distances between distributions P(Z) and Q(Z, \phi) where Z and \phi parameterize P and Q. Since an optimal discriminator estimates the JSD or WD (depending on the loss), you train a discriminator to convergence (i.e try to make it optimal) and use it compute JSD or WD
 
 
-def distribution1(x, batch_size=1):
-    # Distribution defined as (x, U(0,1)). Can be used for question 3
-    while True:
-        a = np.array([(x, random.uniform(0, 1)) for _ in range(batch_size)] , dtype=np.double)
-        yield(torch.from_numpy(a))
+
 
 def q3():
     random.seed(0)
@@ -111,7 +132,14 @@ def q3():
         print("Phi %.3f, JS %.3f" % (js_divergences[-1][0], js_divergences[-1][1]))
     
     print(ws_distances)
-    print(js_divergences)
+    f = open("ws.tab", "w")
+    f.write("\n".join(["%.3f\t%.3f" % (x,y) for (x,y) in ws_distances]))
+    f.close()
+    #print(js_divergences)
+    f = open("js.tab", "w")
+    f.write("\n".join(["%.3f\t%.3f" % (x,y) for (x,y) in js_divergences]))
+    f.close()
+
 
 
 if __name__ == "__main__":
