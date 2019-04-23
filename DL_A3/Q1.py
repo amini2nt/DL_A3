@@ -166,8 +166,8 @@ def q4():
             torch.nn.Sigmoid()
         )
         discriminator.double()
-        optimizer = optim.SGD(discriminator.parameters(), lr=0.001)
-        for epoch in range(10):
+        optimizer = optim.SGD(discriminator.parameters(), lr=0.01)
+        for epoch in range(100):
             #print("Q4 Epoch #%s" % (epoch+1))
             for (p, q) in data:
                 discriminator.zero_grad()
@@ -180,7 +180,7 @@ def q4():
     def train_discriminator():
         d_p = distribution4(512) # f1
         d_q = distribution3(512) # f0
-        train = [(next(d_p), next(d_q)) for i in range(100)]
+        train = [(next(d_p), next(d_q)) for i in range(200)]
         return create_discriminator(train)
 
     discriminator = train_discriminator()
@@ -194,41 +194,27 @@ def q4():
 
     def plot():
         xx = np.linspace(-5,5,1000)
-        #xx = torch.randn(10000).double().numpy()
         f = lambda x: torch.tanh(x*2+1) + x*0.75
         d = lambda x: (1-torch.tanh(x*2+1)**2)*2+0.75
         N = lambda x: np.exp(-x**2/2.)/((2*np.pi)**0.5)
-        #bbb = discriminator(torch.from_numpy(np.array([[x] for x in xx])))
-        #print(bbb)
-        r = discriminator(to_batch(xx)) # evaluate xx using your discriminator; replace xx with the output
-        #print(r)
+        r = discriminator(to_batch(xx)).detach().numpy() # evaluate xx using your discriminator; replace xx with the output
+
         plt.figure(figsize=(8,4))
         plt.subplot(1,2,1)
-        plt.plot(xx,r.detach().numpy())
+        plt.plot(xx,r)
         plt.title(r'$D(x)$')
         plt.savefig("q1.4.png")
-        estimate = (f0 * estimated_f1(to_batch(xx))).detach().numpy() # estimate the density of distribution4 (on xx) using the discriminator; replace "np.ones_like(xx)*0." with your estimate
+        hist, bin_edges = np.histogram(f0, bins = xx, density=True)
+        est = estimated_f1(to_batch(xx)).view(-1).detach().numpy()
+        estimate = (hist[:999] * est[:999]) # estimate the density of distribution4 (on xx) using the discriminator; replace "np.ones_like(xx)*0." with your estimate
         plt.subplot(1,2,2)
-        plt.plot(xx,estimate)
-
+        plt.plot(xx[:999],estimate)
         plt.plot(f(torch.from_numpy(xx)).numpy(), d(torch.from_numpy(xx)).numpy()**(-1)*N(xx))
         plt.legend(['Estimated','True'])
         plt.title('Estimated vs True')
         plt.savefig("q1.4.png")
 
     plot()
-
-
-
-
-
-    #plot discriminator
-    #plit estimated_f1
-
-    #p : f1 : distribution4
-    #q : f0 : gaussian
-    #f1(x) = (f0(x) * d(x))/(1 - d(x))
-
 
 if __name__ == "__main__":
     q4()
