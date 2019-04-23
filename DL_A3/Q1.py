@@ -37,7 +37,7 @@ def distribution1(x, batch_size=1):
 def distribution3(batch_size=1):
     # High dimension gaussian distribution
     while True:
-        yield(np.random.normal(0, 1, (batch_size, 1))) # Can be used in 1.4
+        yield(torch.from_numpy(np.random.normal(0, 1, (batch_size, 1)))) # Can be used in 1.4
 
 e = lambda x: np.exp(x)
 tanh = lambda x: (e(x) - e(-x)) / (e(x)+e(-x))
@@ -45,7 +45,7 @@ def distribution4(batch_size=1):
     # arbitrary sampler
     f = lambda x: tanh(x*2+1) + x*0.75
     while True:
-        yield(f(np.random.normal(0, 1, (batch_size, 1))))
+        yield(torch.from_numpy(f(np.random.normal(0, 1, (batch_size, 1)))))
 
 
 ############## QUESTION 1 ###############
@@ -151,10 +151,12 @@ def q3():
 
 
 ############## QUESTION 4 ###############
-def q4(data):
+def q4():
     def create_discriminator(data):
         assert (data[0][0].size()[1] == data[0][1].size()[1])
+        batch_size = data[0][0].size()[0]
         input_size = data[0][0].size()[1]
+        print("Input size %s:%s" % data[0][0].size())
         discriminator = torch.nn.Sequential(
             torch.nn.Linear(input_size, 32),
             torch.nn.ReLU(),
@@ -176,21 +178,52 @@ def q4(data):
         return discriminator
 
     def train_discriminator():
-        d_p = distribution4(512) # p : f1
-        d_q = distribution3(512) # q : f0
-        train = [(next(d_p), next(d_q)) for i in range(500)]
+        d_p = distribution4(512) # f1
+        d_q = distribution3(512) # f0
+        train = [(next(d_p), next(d_q)) for i in range(100)]
         return create_discriminator(train)
-
-
-    return f1
 
     discriminator = train_discriminator()
     f0 = next(distribution3(512))
     def estimated_f1(x):
-        return (f0 * discriminator(x))/(1 - discriminator(x))
+        #return (f0 * discriminator(x))/(1 - discriminator(x))
+        return (discriminator(x))/(1 - discriminator(x))
 
-    plot discriminator
-    plit estimated_f1
+    def to_batch(xx):
+        return torch.from_numpy(np.array([[x] for x in xx]))
+
+    def plot():
+        xx = np.linspace(-5,5,1000)
+        #xx = torch.randn(10000).double().numpy()
+        f = lambda x: torch.tanh(x*2+1) + x*0.75
+        d = lambda x: (1-torch.tanh(x*2+1)**2)*2+0.75
+        N = lambda x: np.exp(-x**2/2.)/((2*np.pi)**0.5)
+        #bbb = discriminator(torch.from_numpy(np.array([[x] for x in xx])))
+        #print(bbb)
+        r = discriminator(to_batch(xx)) # evaluate xx using your discriminator; replace xx with the output
+        #print(r)
+        plt.figure(figsize=(8,4))
+        plt.subplot(1,2,1)
+        plt.plot(xx,r.detach().numpy())
+        plt.title(r'$D(x)$')
+        plt.savefig("q1.4.png")
+        estimate = (f0 * estimated_f1(to_batch(xx))).detach().numpy() # estimate the density of distribution4 (on xx) using the discriminator; replace "np.ones_like(xx)*0." with your estimate
+        plt.subplot(1,2,2)
+        plt.plot(xx,estimate)
+
+        plt.plot(f(torch.from_numpy(xx)).numpy(), d(torch.from_numpy(xx)).numpy()**(-1)*N(xx))
+        plt.legend(['Estimated','True'])
+        plt.title('Estimated vs True')
+        plt.savefig("q1.4.png")
+
+    plot()
+
+
+
+
+
+    #plot discriminator
+    #plit estimated_f1
 
     #p : f1 : distribution4
     #q : f0 : gaussian
@@ -198,4 +231,4 @@ def q4(data):
 
 
 if __name__ == "__main__":
-    pass #q3()
+    q4()
